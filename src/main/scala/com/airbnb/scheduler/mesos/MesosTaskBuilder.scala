@@ -64,6 +64,8 @@ class MesosTaskBuilder @Inject()(val conf: SchedulerConfiguration) {
         .setName("mesos_task_id").setValue(taskIdStr))
       .addVariables(Variable.newBuilder()
         .setName("CHRONOS_JOB_OWNER").setValue(job.owner))
+      .addVariables(Variable.newBuilder()
+        .setName("mesos_mem").setValue(job.mem.toString))
     if (!job.executor.isEmpty) {
       appendExecutorData(taskInfo, job)
     } else {
