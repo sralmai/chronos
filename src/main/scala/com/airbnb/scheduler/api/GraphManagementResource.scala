@@ -13,6 +13,7 @@ import com.airbnb.scheduler.jobs.graph.Exporter
 import com.airbnb.scheduler.graph.JobGraph
 import com.google.inject.Inject
 import com.codahale.metrics.annotation.Timed
+import org.slf4j.LoggerFactory
 
 /**
  * The REST API for managing jobs.
@@ -26,7 +27,7 @@ class GraphManagementResource @Inject()(
     val jobGraph: JobGraph,
     val configuration: SchedulerConfiguration) {
 
-  private val log = Logger.getLogger(getClass.getName)
+  private val log = LoggerFactory.getLogger(getClass)
 
   @Produces(Array(MediaType.TEXT_PLAIN))
   @Path(PathConstants.jobGraphDotPath)
@@ -37,7 +38,7 @@ class GraphManagementResource @Inject()(
       return Response.ok(jobGraph.makeDotFile()).build
     } catch {
       case ex: Throwable => {
-        log.log(Level.WARNING, "Exception while serving request", ex)
+        log.warn("Exception while serving request", ex)
         throw new WebApplicationException(Status.INTERNAL_SERVER_ERROR)
       }
     }
@@ -54,7 +55,7 @@ class GraphManagementResource @Inject()(
       return Response.ok(buffer.toString).build
     } catch {
       case ex: Throwable => {
-        log.log(Level.WARNING, "Exception while serving request", ex)
+        log.warn("Exception while serving request", ex)
         throw new WebApplicationException(Status.INTERNAL_SERVER_ERROR)
       }
     }

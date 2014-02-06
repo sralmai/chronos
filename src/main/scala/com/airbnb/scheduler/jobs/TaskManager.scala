@@ -1,7 +1,7 @@
 package com.airbnb.scheduler.jobs
 
 import java.util.concurrent.{Future, TimeUnit}
-import java.util.logging.Logger
+import org.slf4j.LoggerFactory
 import collection.mutable
 
 import com.airbnb.scheduler.graph.JobGraph
@@ -24,7 +24,7 @@ class TaskManager @Inject()(val listeningExecutor: ListeningScheduledExecutorSer
                              val mesosDriver: MesosDriverFactory,
                              val registry: MetricRegistry) {
 
-  val log = Logger.getLogger(getClass.getName)
+  val log = LoggerFactory.getLogger(getClass)
 
   /* index values into queues */
   val HIGH_P = 0
@@ -75,7 +75,7 @@ class TaskManager @Inject()(val listeningExecutor: ListeningScheduledExecutorSer
     val name = names(num)
     val taskId = queue.poll()
     if (taskId == null) {
-      log.fine(s"$name queue empty")
+      log.trace(s"$name queue empty")
       None
     } else {
       log.info(s"$name queue contains task: $taskId")
@@ -140,7 +140,7 @@ class TaskManager @Inject()(val listeningExecutor: ListeningScheduledExecutorSer
   }
 
     def enqueue(taskId: String, priority: Int) {
-      log.fine("Adding task '%s' to queue".format(taskId))
+      log.trace("Adding task '%s' to queue".format(taskId))
       /* TODO(DLS): something more sane here with different levels */
       val _priority = Math.min(Math.max(-1, priority), 1) + 1
       queues(_priority).add(taskId)
@@ -207,7 +207,7 @@ class TaskManager @Inject()(val listeningExecutor: ListeningScheduledExecutorSer
       .filterKeys(TaskUtils.getJobNameForTaskId(_) == job.name)
       .filter(_._2 == TaskState.TASK_RUNNING)
       .foreach({ x =>
-      log.warning("Killing task '%s'".format(x._1))
+      log.warn("Killing task '%s'".format(x._1))
       mesosDriver.get().killTask(TaskID.newBuilder().setValue(x._1).build()) })
   }
 }

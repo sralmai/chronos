@@ -11,6 +11,7 @@ import javax.servlet._
 import javax.servlet.http.{HttpServletResponse, HttpServletRequest}
 import com.airbnb.scheduler.jobs.JobScheduler
 import com.google.inject.Inject
+import org.slf4j.LoggerFactory
 
 /**
  * Simple filter that redirects to the leader if applicable.
@@ -19,7 +20,7 @@ import com.google.inject.Inject
 class RedirectFilter @Inject()(val jobScheduler: JobScheduler) extends Filter  {
   def init(filterConfig: FilterConfig) {}
 
-  val log = Logger.getLogger(getClass.getName)
+  val log = LoggerFactory.getLogger(getClass)
 
   def copy(input: InputStream, output: OutputStream) = {
     val bytes = new Array[Byte](1024)
@@ -102,7 +103,7 @@ class RedirectFilter @Inject()(val jobScheduler: JobScheduler) extends Filter  {
           proxy.getInputStream.close
           responseOutputStream.close
         } catch {
-          case t: Throwable => log.log(Level.WARNING, "Exception while proxying!", t)
+          case t: Throwable => log.warn("Exception while proxying!", t)
         }
       }
     }

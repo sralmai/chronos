@@ -19,6 +19,7 @@ import org.joda.time.{DateTimeZone, Period, DateTime, Duration}
 import org.joda.time.format.DateTimeFormat
 import com.google.common.util.concurrent.AbstractIdleService
 import akka.actor.ActorRef
+import org.slf4j.LoggerFactory
 
 /**
  * Constructs concrete tasks given a  list of schedules and a global scheduleHorizon.
@@ -42,7 +43,7 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
   extends AbstractIdleService
   with Leader {
 
-  private[this] val log = Logger.getLogger(getClass.getName)
+  private[this] val log = LoggerFactory.getLogger(getClass)
 
   val localExecutor = Executors.newFixedThreadPool(1)
   val schedulerThreadFuture = new AtomicReference[Future[_]]
@@ -64,7 +65,7 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
       new String(candidate.getLeaderData.get())
     } catch {
       case e : Exception => {
-        log.log(Level.SEVERE, "Error trying to talk to zookeeper. Exiting.", e)
+        log.error("Error trying to talk to zookeeper. Exiting.", e)
         System.exit(1)
         null
       }
@@ -140,7 +141,7 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
       streams = List()
       jobGraph.reset()
       if (purgeQueue) {
-        log.warning("Purging locally queued tasks!")
+        log.warn("Purging locally queued tasks!")
         taskManager.flush()
       }
     }
@@ -213,7 +214,7 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
 
       orphans.foreach({
         x =>
-          log.warning("Removing orphan: %s".format(x.name))
+          log.warn("Removing orphan: %s".format(x.name))
           deregisterJob(x, persist, forceCascade)
       })
 
@@ -259,14 +260,14 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
    */
   def handleFinishedTask(taskId: String) {
     if (!TaskUtils.isValidVersion(taskId)) {
-      log.warning("Found old or invalid task, ignoring!")
+      log.warn("Found old or invalid task, ignoring!")
       return
     }
     val jobName = TaskUtils.getJobNameForTaskId(taskId)
     val jobOption = jobGraph.lookupVertex(jobName)
 
     if (jobOption.isEmpty) {
-      log.warning("Job '%s' no longer registered.".format(jobName))
+      log.warn("Job '%s' no longer registered.".format(jobName))
     } else {
       val (_, start, _) = TaskUtils.parseTaskId(taskId)
       jobMetrics.updateJobStat(jobName, timeMs = DateTime.now(DateTimeZone.UTC).getMillis - start)
@@ -289,7 +290,7 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
       replaceJob(job, newJob)
       val dependents = jobGraph.getExecutableChildren(jobOption.get.name)
       if (!dependents.isEmpty) {
-        log.fine("%s has dependents: %s .".format(jobName, dependents.mkString(",")))
+        log.trace("%s has dependents: %s .".format(jobName, dependents.mkString(",")))
         dependents.map({
           //TODO(FL): Ensure that the job for the given x exists. Lock.
           x =>
@@ -298,14 +299,14 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
               taskManager.enqueue(TaskUtils.getTaskId(dependentJob,
                 DateTime.now(DateTimeZone.UTC)), dependentJob.priority)
 
-              log.fine("Enqueued depedent job." + x)
+              log.trace("Enqueued depedent job." + x)
             }
         })
       } else {
-        log.fine("%s does not have any ready dependents.".format(jobName))
+        log.trace("%s does not have any ready dependents.".format(jobName))
       }
 
-      log.fine("Cleaning up finished task '%s'".format(taskId))
+      log.trace("Cleaning up finished task '%s'".format(taskId))
 
       /* TODO(FL): Fix.
          Cleanup potentially exhausted job. Note, if X tasks were fired within a short period of time (~ execution time
@@ -333,10 +334,10 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
 
   def handleFailedTask(taskId: String) {
     if (!TaskUtils.isValidVersion(taskId)) {
-      log.warning("Found old or invalid task, ignoring!")
+      log.warn("Found old or invalid task, ignoring!")
     } else {
       val (jobName, _, attempt) = TaskUtils.parseTaskId(taskId)
-      log.warning("Task of job: %s failed.".format(jobName))
+      log.warn("Task of job: %s failed.".format(jobName))
       val jobOption = jobGraph.lookupVertex(jobName)
       jobOption match {
         case Some(job) => {
@@ -346,7 +347,7 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
             (DateTime.parse(job.lastSuccess).getMillis() - DateTime.parse(job.lastError).getMillis()) >= 0
 
           if (hasAttemptsLeft && (job.lastError.length == 0 || hadRecentSuccess)) {
-            log.warning("Retrying job: %s, attempt: %d".format(jobName, attempt))
+            log.warn("Retrying job: %s, attempt: %d".format(jobName, attempt))
             /* Schedule the retry up to 60 seconds in the future */
             val newTaskId = TaskUtils.getTaskId(job, DateTime.now(DateTimeZone.UTC)
               .plus(new Duration(failureRetryDelay)), attempt + 1)
@@ -374,12 +375,12 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
             // Handle failure by either disabling the job and notifying the owner,
             // or just notifying the owner.
             if (disableJob) {
-              log.warning("Job failed beyond retries! Job will now be disabled after "
+              log.warn("Job failed beyond retries! Job will now be disabled after "
                 + newJob.errorsSinceLastSuccess + " failures (disableAfterFailures=" + disableAfterFailures + ").")
               sendNotification(job, "JOB DISABLED: '%s' failed at '%s', %d failures since last success"
                 .format(job.name, DateTime.now(DateTimeZone.UTC), newJob.errorsSinceLastSuccess))
             } else {
-              log.warning("Job failed beyond retries!")
+              log.warn("Job failed beyond retries!")
               sendNotification(job, "job '%s' failed at '%s'. Retries attempted: %d. "
                 .format(job.name, DateTime.now(DateTimeZone.UTC), job.retries))
             }
@@ -387,7 +388,7 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
           }
         }
         case None =>
-          log.warning("Could not find job for task: %s Job may have been deleted while task was in flight!"
+          log.warn("Could not find job for task: %s Job may have been deleted while task was in flight!"
             .format(taskId))
       }
     }
@@ -437,15 +438,15 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
     //TODO(FL): wrap with lock.
     val jobOption = jobGraph.lookupVertex(jobName)
     if (jobOption.isEmpty) {
-      log.warning("-----------------------------------")
-      log.warning("Warning, no job found in graph for:" + jobName)
-      log.warning("-----------------------------------")
+      log.warn("-----------------------------------")
+      log.warn("Warning, no job found in graph for:" + jobName)
+      log.warn("-----------------------------------")
       //This might happen during loading stage in case of failover.
       return (None, None)
     }
 
     val (recurrences, nextDate, _) = Iso8601Expressions.parse(schedule)
-    log.finest("Recurrences: '%d', next date: '%s'".format(recurrences, stream.schedule))
+    log.trace("Recurrences: '%d', next date: '%s'".format(recurrences, stream.schedule))
     //nextDate has to be > (now - epsilon) & < (now + timehorizon) , for it to be scheduled!
     if (recurrences == 0) {
       log.info("Finished all recurrences of job '%s'".format(jobName))
@@ -465,11 +466,11 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
         return (None, Some(stream))
       }
       //Needs to be scheduled at a later time, after schedule horizon.
-      log.fine("No need to work on schedule: '%s' yet".format(nextDate))
+      log.trace("No need to work on schedule: '%s' yet".format(nextDate))
       if (stream.tail().isEmpty) {
         //TODO(FL): Verify that this can go.
         persistenceStore.removeJob(job)
-        log.warning("\n\nWARNING\n\nReached the tail of the streams which should have been never reached \n\n")
+        log.warn("\n\nWARNING\n\nReached the tail of the streams which should have been never reached \n\n")
         return (None, None)
       }
       else log.info("tail:" + stream.tail().get.schedule)
@@ -528,7 +529,7 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
   }
 
   private def removeOldSchedules(scheduleStreams: List[Option[ScheduleStream]]): List[ScheduleStream] = {
-    log.fine("Filtering out empty streams")
+    log.trace("Filtering out empty streams")
     scheduleStreams.filter(s => !s.isEmpty && !s.get.tail().isEmpty).map(_.get)
   }
 
@@ -540,17 +541,17 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
   private def addSchedule(now: DateTime, newStreams: List[ScheduleStream]) {
     log.info("Adding schedule for time:" + now.toString(DateTimeFormat.fullTime()))
     lock.synchronized {
-      log.fine("Starting iteration")
+      log.trace("Starting iteration")
       streams = iteration(now, newStreams ++ streams)
-      log.fine("Size of streams: %d".format(streams.size))
+      log.trace("Size of streams: %d".format(streams.size))
     }
   }
 
   private def removeSchedule(deletedStream: BaseJob) {
     lock.synchronized {
-      log.fine("Removing schedules: ")
+      log.trace("Removing schedules: ")
       streams = streams.filter(_.jobName != deletedStream.name)
-      log.fine("Size of streams: %d".format(streams.size))
+      log.trace("Size of streams: %d".format(streams.size))
     }
   }
 
@@ -580,7 +581,7 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
 
     log.info("Defeated. Not the current leader.")
     if (abdicateCmd != null) {
-      log.warning("Abdicate command present.")
+      log.warn("Abdicate command present.")
       abdicateCmd = null
     }
     running.set(false)
@@ -593,7 +594,7 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
   def onElected(cmd: ExceptionalCommand[JoinException]) {
     log.info("Elected as leader.")
     if (abdicateCmd != null) {
-      log.warning("Abdicate command exists already!")
+      log.warn("Abdicate command exists already!")
     }
     abdicateCmd = cmd
     leader.set(true)

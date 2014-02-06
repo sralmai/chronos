@@ -1,7 +1,7 @@
 package com.airbnb.scheduler.jobs
 
 import collection.mutable
-import java.util.logging.Logger
+import org.slf4j.LoggerFactory
 
 import org.joda.time.{DateTimeZone, DateTime}
 import com.airbnb.scheduler.state.PersistenceStore
@@ -16,7 +16,7 @@ import com.airbnb.scheduler.state.PersistenceStore
 
 object TaskUtils {
 
-  private[this] val log = Logger.getLogger(getClass.getName)
+  private[this] val log = LoggerFactory.getLogger(getClass)
 
   //TaskIdFormat: ct:JOB_NAME:DUE:ATTEMPT
   val taskIdTemplate = "ct:%d:%d:%s"
@@ -47,7 +47,7 @@ object TaskUtils {
       jobName
     } catch {
       case t: Throwable =>
-        log.warning("Unable to parse idStr: '%s' due to a corrupted string or version error. " +
+        log.warn("Unable to parse idStr: '%s' due to a corrupted string or version error. " +
           "Warning, dependents will not be triggered!")
         return ""
     }
@@ -66,12 +66,12 @@ object TaskUtils {
 
     //if the task isn't due yet
       if (taskTuple._2 > now) {
-        log.fine("Task '%s' is scheduled in the future".format(taskInstance.name))
+        log.trace("Task '%s' is scheduled in the future".format(taskInstance.name))
         taskMap += (p._1 -> (taskInstance, (taskTuple._2 - now), taskTuple._3))
       } else if (lastExecutableTime > now) {
         taskMap += (p._1 -> (taskInstance, 0L, taskTuple._3))
       } else {
-        log.fine("Task '%s' is overdue by '%d' ms!".format(p._1, now - taskTuple._2))
+        log.trace("Task '%s' is overdue by '%d' ms!".format(p._1, now - taskTuple._2))
         taskMap += (p._1 -> (taskInstance, taskTuple._2 - now, taskTuple._3))
       }
     }

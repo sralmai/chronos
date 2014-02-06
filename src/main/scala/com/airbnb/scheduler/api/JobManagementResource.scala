@@ -13,6 +13,7 @@ import com.airbnb.scheduler.jobs._
 import com.google.inject.Inject
 import com.codahale.metrics.annotation.Timed
 import org.joda.time.{DateTimeZone, DateTime}
+import org.slf4j.LoggerFactory
 
 /**
  * The REST API for managing jobs.
@@ -27,7 +28,7 @@ class JobManagementResource @Inject()(val jobScheduler: JobScheduler,
                                       val configuration: SchedulerConfiguration,
                                       val jobMetrics: JobMetrics) {
 
-  private[this] val log = Logger.getLogger(getClass.getName)
+  private[this] val log = LoggerFactory.getLogger(getClass)
 
   @Path(PathConstants.jobPatternPath)
   @DELETE
@@ -40,7 +41,7 @@ class JobManagementResource @Inject()(val jobScheduler: JobScheduler,
       val job = jobGraph.lookupVertex(jobName).get
       jobScheduler.sendNotification(job, "[CHRONOS] - Your job '%s' was deleted!".format(jobName))
       if (force) {
-        log.warning("Force deleting job '%s'".format(jobName))
+        log.warn("Force deleting job '%s'".format(jobName))
         jobScheduler.sendNotification(job, "[CHRONOS] - WARNING!",
           Some(
             ("You may have corrupted the state by force deleting '%s'." +
@@ -52,12 +53,12 @@ class JobManagementResource @Inject()(val jobScheduler: JobScheduler,
       Response.noContent().build
     } catch {
       case ex: IllegalArgumentException => {
-        log.log(Level.INFO, "Bad Request", ex)
+        log.info("Bad Request", ex)
         return Response.status(Response.Status.BAD_REQUEST).entity(ex.getMessage)
           .build()
       }
       case ex: Throwable => {
-        log.log(Level.WARNING, "Exception while serving request", ex)
+        log.warn("Exception while serving request", ex)
         return Response.serverError().build
       }
     }
@@ -72,12 +73,12 @@ class JobManagementResource @Inject()(val jobScheduler: JobScheduler,
       Response.ok(jobMetrics.getJsonStats(jobName)).build()
     } catch {
       case ex: IllegalArgumentException => {
-        log.log(Level.INFO, "Bad Request", ex)
+        log.info("Bad Request", ex)
         Response.status(Response.Status.BAD_REQUEST).entity(ex.getMessage)
           .build()
       }
       case ex: Throwable => {
-        log.log(Level.WARNING, "Exception while serving request", ex)
+        log.warn("Exception while serving request", ex)
         Response.serverError().build
       }
     }
@@ -95,12 +96,12 @@ class JobManagementResource @Inject()(val jobScheduler: JobScheduler,
       Response.noContent().build
     } catch {
       case ex: IllegalArgumentException => {
-        log.log(Level.INFO, "Bad Request", ex)
+        log.info("Bad Request", ex)
         return Response.status(Response.Status.BAD_REQUEST).entity(ex.getMessage)
           .build()
       }
       case ex: Throwable => {
-        log.log(Level.WARNING, "Exception while serving request", ex)
+        log.warn("Exception while serving request", ex)
         return Response.serverError().build
       }
     }
@@ -120,7 +121,7 @@ class JobManagementResource @Inject()(val jobScheduler: JobScheduler,
       return Response.ok(jobs.toList).build
     } catch {
       case ex: Throwable => {
-        log.log(Level.WARNING, "Exception while serving request", ex)
+        log.warn("Exception while serving request", ex)
         throw new WebApplicationException(Status.INTERNAL_SERVER_ERROR)
       }
     }
@@ -175,7 +176,7 @@ class JobManagementResource @Inject()(val jobScheduler: JobScheduler,
       Response.ok(filteredJobs).build
     } catch {
       case ex: Throwable => {
-        log.log(Level.WARNING, "Exception while serving request", ex)
+        log.warn("Exception while serving request", ex)
         throw new WebApplicationException(Status.INTERNAL_SERVER_ERROR)
       }
     }

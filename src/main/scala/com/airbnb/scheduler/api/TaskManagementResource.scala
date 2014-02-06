@@ -13,6 +13,7 @@ import com.airbnb.scheduler.state.PersistenceStore
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.google.inject.Inject
 import com.codahale.metrics.annotation.Timed
+import org.slf4j.LoggerFactory
 
 /**
  * The REST API for managing tasks such as updating the status of an asynchronous task.
@@ -28,7 +29,7 @@ class TaskManagementResource @Inject()(
     val taskManager: TaskManager,
     val configuration: SchedulerConfiguration) {
 
-  private[this] val log = Logger.getLogger(getClass.getName)
+  private[this] val log = LoggerFactory.getLogger(getClass)
 
   /**
    * Updates the status of a job, especially useful for asynchronous jobs such as hadoop jobs.
@@ -52,7 +53,7 @@ class TaskManagementResource @Inject()(
       return Response.noContent().build()
     } catch {
       case ex: Throwable => {
-        log.log(Level.WARNING, "Exception while serving request", ex)
+        log.warn("Exception while serving request", ex)
         throw new WebApplicationException(Status.INTERNAL_SERVER_ERROR)
       }
     }
@@ -70,7 +71,7 @@ class TaskManagementResource @Inject()(
       return Response.noContent().build()
     } catch {
       case ex: Throwable => {
-        log.log(Level.WARNING, "Exception while serving request", ex)
+        log.warn("Exception while serving request", ex)
         throw new WebApplicationException(Status.INTERNAL_SERVER_ERROR)
       }
     }
@@ -87,7 +88,7 @@ class TaskManagementResource @Inject()(
       return Response.noContent().build()
     } catch {
       case ex: Throwable => {
-        log.log(Level.WARNING, "Exception while serving request", ex)
+        log.warn("Exception while serving request", ex)
         throw new WebApplicationException(Status.INTERNAL_SERVER_ERROR)
       }
     }

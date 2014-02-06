@@ -1,6 +1,5 @@
 package com.airbnb.scheduler.api
 
-import java.util.logging.{Level, Logger}
 import javax.ws.rs.{Path, POST, Produces, PUT}
 import javax.ws.rs.core.Response
 import scala.Array
@@ -11,6 +10,7 @@ import com.airbnb.scheduler.graph.JobGraph
 import com.google.inject.Inject
 import com.google.common.base.Charsets
 import com.codahale.metrics.annotation.Timed
+import org.slf4j.LoggerFactory
 
 /**
  * The REST API for adding job-dependencies to the scheduler.
@@ -24,7 +24,7 @@ class DependentJobResource @Inject()(
     val jobGraph: JobGraph,
     val configuration: SchedulerConfiguration) {
 
-  private[this] val log = Logger.getLogger(getClass.getName)
+  private[this] val log = LoggerFactory.getLogger(getClass)
 
   @POST
   @Timed
@@ -40,12 +40,12 @@ class DependentJobResource @Inject()(
       Response.noContent().build()
     } catch {
       case ex: IllegalArgumentException => {
-        log.log(Level.INFO, "Bad Request", ex)
+        log.info("Bad Request", ex)
         return Response.status(Response.Status.BAD_REQUEST).entity(ex.getMessage)
           .build()
       }
       case ex: Throwable => {
-        log.log(Level.WARNING, "Exception while serving request", ex)
+        log.warn("Exception while serving request", ex)
         return Response.serverError().build()
       }
     }
@@ -84,12 +84,12 @@ class DependentJobResource @Inject()(
       Response.noContent().build()
     } catch {
       case ex: IllegalArgumentException => {
-        log.log(Level.INFO, "Bad Request", ex)
+        log.info("Bad Request", ex)
         return Response.status(Response.Status.BAD_REQUEST).entity(ex.getMessage)
           .build()
       }
       case ex: Throwable => {
-        log.log(Level.WARNING, "Exception while serving request", ex)
+        log.warn("Exception while serving request", ex)
         return Response.serverError().build()
       }
     }

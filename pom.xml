@@ -34,6 +34,8 @@
         <twitter-commons.version>0.0.44</twitter-commons.version>
         <metrics.version>3.0.0</metrics.version>
         <akka.version>2.2.1</akka.version>
+        <logback.version>1.1.1</logback.version>
+
 
         <!-- test deps versions -->
         <junit.version>4.11</junit.version>
@@ -115,6 +117,11 @@
         </dependency>
 
         <!-- Everything else -->
+        <dependency>
+          <groupId>ch.qos.logback</groupId>
+          <artifactId>logback-classic</artifactId>
+          <version>${logback.version}</version>
+        </dependency>
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>

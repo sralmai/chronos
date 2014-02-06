@@ -1,6 +1,5 @@
 package com.airbnb.scheduler.state
 
-import java.util.logging.{Level, Logger}
 import scala.collection.mutable
 import scala.Some
 
@@ -9,6 +8,7 @@ import com.airbnb.scheduler.jobs._
 import com.google.inject.Inject
 import com.twitter.common.zookeeper.{ZooKeeperUtils, ZooKeeperClient}
 import org.apache.mesos.state.{InMemoryState, State}
+import org.slf4j.LoggerFactory
 
 /**
  * Handles storage and retrieval of job and task level data within the cluster.
@@ -20,7 +20,7 @@ class MesosStatePersistenceStore @Inject()(val zk: ZooKeeperClient,
                                             val state: State = new InMemoryState)
   extends PersistenceStore {
 
-  val log = Logger.getLogger(getClass.getName)
+  val log = LoggerFactory.getLogger(getClass)
   val lock = new Object
 
   //TODO(FL): Redo string parsing once namespacing the states is implemented in mesos.
@@ -50,10 +50,10 @@ class MesosStatePersistenceStore @Inject()(val zk: ZooKeeperClient,
       Some(fnc(i))
     } catch {
       case t: Throwable => if (attempt < max) {
-        log.log(Level.WARNING, "Retrying attempt:" + attempt, t)
+        log.warn("Retrying attempt:" + attempt, t)
         retry(max, attempt + 1, i, fnc)
       } else {
-        log.severe("Giving up after attempts:" + attempt)
+        log.warn("Giving up after attempts:" + attempt)
         None
       }
     }
@@ -66,17 +66,17 @@ class MesosStatePersistenceStore @Inject()(val zk: ZooKeeperClient,
 
   //TODO(FL): Think about caching tasks locally such that we don't have to query zookeeper.
   def persistTask(name: String, data: Array[Byte]): Boolean = {
-    log.finest("Persisting task: " + name)
+    log.trace("Persisting task: " + name)
     return (persistData(taskName(name), data))
   }
 
   def removeTask(taskId: String): Boolean = {
-    log.fine("Removing task:" + taskId)
+    log.trace("Removing task:" + taskId)
     remove(taskName(taskId))
   }
 
   def removeJob(job: BaseJob) {
-    log.fine("Removing job:" + job.name)
+    log.trace("Removing job:" + job.name)
     remove(jobName(job.name))
   }
 
@@ -99,7 +99,7 @@ class MesosStatePersistenceStore @Inject()(val zk: ZooKeeperClient,
     val tasks = getTaskIds(None)
     tasks.foreach({
       x =>
-        log.warning("Removing task node in ZK:" + x)
+        log.warn("Removing task node in ZK:" + x)
         remove(x)
     })
   }
@@ -130,7 +130,7 @@ class MesosStatePersistenceStore @Inject()(val zk: ZooKeeperClient,
             val taskId = f.substring(taskPrefix.size)
             results += (taskId -> data)
           } else {
-             log.warning("Found old incompatible version of task, deleting:" + f)
+             log.warn("Found old incompatible version of task, deleting:" + f)
             removeTask(f)
           }
         }
@@ -170,7 +170,7 @@ class MesosStatePersistenceStore @Inject()(val zk: ZooKeeperClient,
       (zk.get.exists(path, false) == null)
     } catch {
       case t: Throwable => {
-        log.log(Level.WARNING, "Error while deleting zookeeper node: %s".format(name), t)
+        log.warn("Error while deleting zookeeper node: %s".format(name), t)
       }
       false
     }

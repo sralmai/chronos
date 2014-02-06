@@ -1,6 +1,6 @@
 package com.airbnb.scheduler
 
-import java.util.logging.Logger
+import org.slf4j.LoggerFactory
 import java.util.concurrent.atomic.AtomicBoolean
 
 import com.airbnb.scheduler.api._
@@ -17,7 +17,7 @@ import org.rogach.scallop.ScallopConf
  * @author Florian Leibert (flo@leibert.de)
  */
 object Main extends App {
-  private[this] val log = Logger.getLogger(getClass.getName)
+  private[this] val log = LoggerFactory.getLogger(getClass)
 
   val isLeader = new AtomicBoolean(false)
 

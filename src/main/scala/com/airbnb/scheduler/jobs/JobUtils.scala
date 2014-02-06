@@ -2,7 +2,7 @@ package com.airbnb.scheduler.jobs
 
 import collection.mutable
 import collection.mutable.ListBuffer
-import java.util.logging.Logger
+import org.slf4j.LoggerFactory
 import com.airbnb.scheduler.state.PersistenceStore
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.module.SimpleModule
@@ -17,7 +17,7 @@ import com.airbnb.utils.{JobDeserializer, JobSerializer}
  */
 object JobUtils {
 
-  private[this] val log = Logger.getLogger(getClass.getName)
+  private[this] val log = LoggerFactory.getLogger(getClass)
 
   val jobNamePattern = """([\w\s#_-]+)""".r
   val stats = new mutable.HashMap[String, DescriptiveStatistics]()
@@ -116,17 +116,17 @@ object JobUtils {
     val skip = Seconds.secondsBetween(start, dateTime).getSeconds / per.toStandardSeconds.getSeconds
     if (rec == -1) {
       val nStart = start.plus(per.multipliedBy(skip))
-      log.warning("Skipped forward %d iterations, modified start from '%s' to '%s"
+      log.warn("Skipped forward %d iterations, modified start from '%s' to '%s"
         .format(skip, start.toString(DateTimeFormat.fullDate),
         nStart.toString(DateTimeFormat.fullDate)))
       Some(new ScheduleStream(Iso8601Expressions.create(rec, nStart, per), job.name))
     } else if (rec < skip) {
-      log.warning("Filtered job as it is no longer valid.")
+      log.warn("Filtered job as it is no longer valid.")
       None
     } else {
       val nRec = rec - skip
       val nStart = start.plus(per.multipliedBy(skip))
-      log.warning("Skipped forward %d iterations, iterations is now '%d' , modified start from '%s' to '%s"
+      log.warn("Skipped forward %d iterations, iterations is now '%d' , modified start from '%s' to '%s"
         .format(skip, nRec, start.toString(DateTimeFormat.fullDate),
         nStart.toString(DateTimeFormat.fullDate)))
       Some(new ScheduleStream(Iso8601Expressions.create(nRec, nStart, per), job.name))

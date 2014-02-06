@@ -13,6 +13,7 @@ import com.google.inject.Inject
 import com.codahale.metrics.annotation.Timed
 import com.google.common.base.Charsets
 import com.airbnb.scheduler.jobs.ScheduleBasedJob
+import org.slf4j.LoggerFactory
 
 /**
  * The REST API to the iso8601 (timed, cron-like) component of the scheduler.
@@ -26,7 +27,7 @@ class Iso8601JobResource @Inject()(
   val jobGraph: JobGraph,
   val configuration: SchedulerConfiguration) {
 
-  private val log = Logger.getLogger(getClass.getName)
+  private val log = LoggerFactory.getLogger(getClass)
 
   val iso8601JobSubmissions = new AtomicLong(0)
 
@@ -46,12 +47,12 @@ class Iso8601JobResource @Inject()(
       Response.noContent().build()
     } catch {
       case ex: IllegalArgumentException => {
-        log.log(Level.INFO, "Bad Request", ex)
+        log.info("Bad Request", ex)
         return Response.status(Response.Status.BAD_REQUEST).entity(ex.getMessage)
           .build
       }
       case ex: Throwable => {
-        log.log(Level.WARNING, "Exception while serving request", ex)
+        log.warn("Exception while serving request", ex)
         return Response.serverError().build
       }
     }
@@ -80,12 +81,12 @@ class Iso8601JobResource @Inject()(
       Response.noContent().build()
     } catch {
       case ex: IllegalArgumentException => {
-        log.log(Level.INFO, "Bad Request", ex)
+        log.info("Bad Request", ex)
         return Response.status(Response.Status.BAD_REQUEST).entity(ex.getMessage)
           .build
       }
       case ex: Throwable => {
-        log.log(Level.WARNING, "Exception while serving request", ex)
+        log.warn("Exception while serving request", ex)
         return Response.serverError().build
       }
     }

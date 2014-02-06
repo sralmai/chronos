@@ -2,7 +2,7 @@ package com.airbnb.scheduler.config
 
 import java.net.InetSocketAddress
 import java.util.concurrent.TimeUnit
-import java.util.logging.Logger
+import org.slf4j.LoggerFactory
 
 import com.airbnb.scheduler.state.{PersistenceStore, MesosStatePersistenceStore}
 import com.google.inject._
@@ -22,7 +22,7 @@ import mesosphere.chaos.http.HttpConf
 //TODO(FL): Consider using Sindi or Subcut for DI.
 class ZookeeperModule(val config: SchedulerConfiguration with HttpConf)
     extends AbstractModule {
-  private val log = Logger.getLogger(getClass.getName)
+  private val log = LoggerFactory.getLogger(getClass)
 
   def configure() {}
 

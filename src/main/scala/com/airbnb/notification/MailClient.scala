@@ -1,8 +1,8 @@
 package com.airbnb.notification
 
-import java.util.logging.{Level, Logger}
 import akka.actor.{Terminated, Actor}
 import org.apache.commons.mail.{DefaultAuthenticator, SimpleEmail}
+import org.slf4j.LoggerFactory
 
 /**
  * A very simple mail client that works out of the box with providers such as Amazon SES.
@@ -18,7 +18,7 @@ class MailClient(
     val ssl : Boolean)
   extends Actor {
 
-  private[this] val log = Logger.getLogger(getClass.getName)
+  private[this] val log = LoggerFactory.getLogger(getClass)
   private[this] val split = """(.*):([0-9]*)""".r
   private[this] val split(mailHost, mailPortStr) = mailServerString
 
@@ -51,12 +51,12 @@ class MailClient(
       try {
         sendNotification(to, subject, message)
       } catch {
-        case t: Throwable => log.log(Level.WARNING, "Caught a throwable while trying to send mail.", t)
+        case t: Throwable => log.warn("Caught a throwable while trying to send mail.", t)
       }
     }
     case Terminated(_) => {
-      log.warning("Actor has exited, no longer sending out email notifications!")
+      log.warn("Actor has exited, no longer sending out email notifications!")
     }
-    case _ => log.warning("Couldn't understand message.")
+    case _ => log.warn("Couldn't understand message.")
   }
 }

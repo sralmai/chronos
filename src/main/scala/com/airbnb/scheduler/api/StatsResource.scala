@@ -1,6 +1,5 @@
 package com.airbnb.scheduler.api
 
-import java.util.logging.{Level, Logger}
 import javax.ws.rs._
 import javax.ws.rs.core.{MediaType, Response}
 import javax.ws.rs.core.Response.Status
@@ -14,6 +13,8 @@ import com.google.inject.Inject
 import com.codahale.metrics.annotation.Timed
 import com.fasterxml.jackson.databind.ObjectMapper
 import scala.collection.JavaConversions._
+import org.slf4j.LoggerFactory
+
 /**
  * The REST API to the PerformanceResource component of the API.
  * @author Matt Redmond (matt.redmond@airbnb.com)
@@ -28,7 +29,7 @@ class StatsResource @Inject()(
                                      val configuration: SchedulerConfiguration,
                                      val jobMetrics: JobMetrics) {
 
-  private[this] val log = Logger.getLogger(getClass.getName)
+  private[this] val log = LoggerFactory.getLogger(getClass)
 
   @Timed
   @GET
@@ -60,7 +61,7 @@ class StatsResource @Inject()(
       Response.ok(output).build
     } catch {
       case ex: Throwable => {
-        log.log(Level.WARNING, "Exception while serving request", ex)
+        log.warn("Exception while serving request", ex)
         throw new WebApplicationException(Status.INTERNAL_SERVER_ERROR)
       }
     }

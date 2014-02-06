@@ -1,6 +1,6 @@
 package com.airbnb.scheduler.mesos
 
-import java.util.logging.Logger
+import org.slf4j.LoggerFactory
 import scala.Some
 
 import com.airbnb.scheduler.jobs._
@@ -25,7 +25,7 @@ class MesosJobFramework @Inject()(
     val taskBuilder: MesosTaskBuilder)
   extends Scheduler {
 
-  private[this] val log = Logger.getLogger(getClass.getName)
+  private[this] val log = LoggerFactory.getLogger(getClass)
   private var runningJobs = new HashSet[String]
 
   val frameworkName = "chronos"
@@ -41,12 +41,12 @@ class MesosJobFramework @Inject()(
   /* Overridden methods from MesosScheduler */
   @Override
   def reregistered(schedulerDriver: SchedulerDriver, masterInfo: MasterInfo) {
-    log.warning("Reregistered")
+    log.warn("Reregistered")
   }
 
   @Override
   def disconnected(schedulerDriver: SchedulerDriver) {
-    log.warning("Disconnected")
+    log.warn("Disconnected")
   }
 
   //TODO(FL): Persist the UPDATED task or job into ZK such that on failover / reload, we don't have to step through the
@@ -64,7 +64,7 @@ class MesosJobFramework @Inject()(
               processTask(x, j, offer, taskBuilder)
               getNextTask(offers.filter(x => x.getId != offer.getId))
             case _ =>
-              log.warning("No sufficient offers found for task '%s', will append to queue".format(x))
+              log.warn("No sufficient offers found for task '%s', will append to queue".format(x))
               offers.foreach ( offer => mesosDriver.get().declineOffer(offer.getId) )
 
               /* Put the task back into the queue */
@@ -83,7 +83,7 @@ class MesosJobFramework @Inject()(
   @Override
   def offerRescinded(schedulerDriver: SchedulerDriver, offerID: OfferID) {
     //TODO(FL): Handle this case! In practice this isn't a problem as we have retries.
-    log.warning("Offer rescinded for offer:" + offerID.getValue)
+    log.warn("Offer rescinded for offer:" + offerID.getValue)
   }
 
   @Override
@@ -109,13 +109,13 @@ class MesosJobFramework @Inject()(
           scheduler.handleFinishedTask(taskStatus.getTaskId.getValue)
         }
       case TaskState.TASK_FAILED =>
-        log.warning("Task with id '%s' FAILED".format(taskStatus.getTaskId.getValue))
+        log.warn("Task with id '%s' FAILED".format(taskStatus.getTaskId.getValue))
         scheduler.handleFailedTask(taskStatus.getTaskId.getValue)
       case TaskState.TASK_LOST =>
-        log.warning("Task with id '%s' LOST".format(taskStatus.getTaskId.getValue))
+        log.warn("Task with id '%s' LOST".format(taskStatus.getTaskId.getValue))
         scheduler.handleFailedTask(taskStatus.getTaskId.getValue)
       case TaskState.TASK_RUNNING =>
-        log.warning("Task with id '%s' RUNNING.".format(taskStatus.getTaskId.getValue))
+        log.warn("Task with id '%s' RUNNING.".format(taskStatus.getTaskId.getValue))
       case _ =>
         log.info("Unknown TaskState:" + taskStatus.getState + " for task: " + taskStatus.getTaskId.getValue)
     }
@@ -129,7 +129,7 @@ class MesosJobFramework @Inject()(
   @Override
   def slaveLost(schedulerDriver: SchedulerDriver, slaveID: SlaveID) {
     //TODO(FL): FIND PENDING TASKS WITH THE GIVEN SLAVE ID
-    log.warning("Slave lost")
+    log.warn("Slave lost")
   }
 
   @Override
@@ -153,7 +153,7 @@ class MesosJobFramework @Inject()(
    */
   def buildTask(taskId: String, job: BaseJob, offer: Offer) : (Boolean, TaskInfo.Builder, Offer) = {
     val taskInfoTemplate = taskBuilder.getMesosTaskInfoBuilder(taskId, job)
-    log.fine("Job %s ready for launch at time: %d".format(taskInfoTemplate.getTaskId.getValue,
+    log.trace("Job %s ready for launch at time: %d".format(taskInfoTemplate.getTaskId.getValue,
       System.currentTimeMillis))
     import collection.JavaConversions._
 
@@ -188,7 +188,7 @@ class MesosJobFramework @Inject()(
                 // not sufficient, skip
             }
           case _ =>
-            log.warning("Ignoring offered resource: %s".format(x.getType.toString))
+            log.warn("Ignoring offered resource: %s".format(x.getType.toString))
       }})
     (sufficient("cpus") && sufficient("mem") && sufficient("disk"), taskInfoTemplate, offer)
   }
@@ -208,7 +208,7 @@ class MesosJobFramework @Inject()(
       val status: Protos.Status = mesosDriver.get().launchTasks(offer.getId, List(mesosTask).asJava, filters)
       if (status == Protos.Status.DRIVER_RUNNING) {
         val deleted = taskManager.removeTask(taskId)
-        log.fine("Successfully launched task '%s' via mesos, task records successfully deleted: '%b'"
+        log.trace("Successfully launched task '%s' via mesos, task records successfully deleted: '%b'"
           .format(taskId, deleted))
         runningJobs.add(job.name)
       }

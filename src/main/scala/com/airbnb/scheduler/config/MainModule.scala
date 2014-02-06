@@ -19,13 +19,14 @@ import mesosphere.mesos.util.FrameworkIdUtil
 import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.util.Timeout
 import scala.concurrent.duration._
+import org.slf4j.LoggerFactory
 
 /**
  * Guice glue code of application logic components.
  * @author Florian Leibert (flo@leibert.de)
  */
 class MainModule(val config: SchedulerConfiguration) extends AbstractModule {
-  private[this] val log = Logger.getLogger(getClass.getName)
+  private[this] val log = LoggerFactory.getLogger(getClass)
 
   override def configure() {
     log.info("Wiring up the application")
@@ -84,7 +85,7 @@ class MainModule(val config: SchedulerConfiguration) extends AbstractModule {
     } yield {
       implicit val system = ActorSystem("chronos-actors")
       implicit val timeout = Timeout(36500 days)
-      log.warning("Starting mail client.")
+      log.warn("Starting mail client.")
       system.actorOf(Props(classOf[MailClient], server, from,
         config.mailUser.get, config.mailPassword.get, config.mailSslOn()))
     }
@@ -95,7 +96,7 @@ class MainModule(val config: SchedulerConfiguration) extends AbstractModule {
   def provideListeningExecutorService(): ListeningScheduledExecutorService = {
     val uncaughtExceptionHandler = new UncaughtExceptionHandler {
       def uncaughtException(thread: Thread, t: Throwable) {
-        log.log(Level.SEVERE, "Error occurred in ListeningExecutorService, catching in thread", t)
+        log.warn("Error occurred in ListeningExecutorService, catching in thread", t)
       }
     }
     MoreExecutors.listeningDecorator(new ScheduledThreadPoolExecutor(5,

@@ -1,7 +1,7 @@
 package com.airbnb.scheduler.graph
 
 import java.io.StringWriter
-import java.util.logging.Logger
+import org.slf4j.LoggerFactory
 import javax.annotation.concurrent.ThreadSafe
 import scala.collection.mutable.{SynchronizedMap, HashMap, ListBuffer, Map}
 
@@ -16,7 +16,7 @@ import org.jgrapht.graph.DefaultEdge
  */
 @ThreadSafe
 class JobGraph {
-  private[this] val log = Logger.getLogger(getClass.getName)
+  private[this] val log = LoggerFactory.getLogger(getClass)
   private[this] val jobNameMapping = new HashMap[String, BaseJob] with SynchronizedMap[String, BaseJob]
   private[this] val lock = new Object
   val dag = new DirectedAcyclicGraph[String, DefaultEdge](classOf[DefaultEdge])
@@ -62,14 +62,14 @@ class JobGraph {
 
   //TODO(FL): Documentation here and elsewhere in this file.
   def addVertex(vertex: BaseJob) {
-    log.warning("Adding vertex:" + vertex.name)
+    log.warn("Adding vertex:" + vertex.name)
     require(lookupVertex(vertex.name).isEmpty, "Vertex already exists in graph %s".format(vertex.name))
     require(!vertex.name.isEmpty, "In order to be added to the graph, the vertex must have a name")
     jobNameMapping.put(vertex.name, vertex)
     lock.synchronized {
       dag.addVertex(vertex.name)
     }
-    log.warning("Current number of vertices:" + dag.vertexSet.size)
+    log.warn("Current number of vertices:" + dag.vertexSet.size)
   }
 
   def removeVertex(vertex: BaseJob) {

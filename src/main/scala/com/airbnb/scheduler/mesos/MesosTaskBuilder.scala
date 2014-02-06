@@ -1,6 +1,6 @@
 package com.airbnb.scheduler.mesos
 
-import java.util.logging.Logger
+import org.slf4j.LoggerFactory
 
 import com.airbnb.scheduler.jobs.BaseJob
 import com.google.protobuf.ByteString
@@ -18,7 +18,7 @@ import scala.collection.JavaConverters._
  * @author Florian Leibert (flo@leibert.de)
  */
 class MesosTaskBuilder @Inject()(val conf: SchedulerConfiguration) {
-  private[this] val log = Logger.getLogger(getClass.getName)
+  private[this] val log = LoggerFactory.getLogger(getClass)
   val taskNameTemplate = "ChronosTask:%s"
   //args|command.
   //  e.g. args: -av (async job), verbose mode
