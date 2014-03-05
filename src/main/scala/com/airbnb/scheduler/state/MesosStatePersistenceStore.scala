@@ -61,13 +61,13 @@ class MesosStatePersistenceStore @Inject()(val zk: ZooKeeperClient,
 
   def persistJob(job: BaseJob): Boolean = {
     log.info("Persisting job '%s' with data '%s'"format(job.name, job.toString))
-    return (persistData(jobName(job.name), JobUtils.toBytes(job)))
+    persistData(jobName(job.name), JobUtils.toBytes(job))
   }
 
   //TODO(FL): Think about caching tasks locally such that we don't have to query zookeeper.
   def persistTask(name: String, data: Array[Byte]): Boolean = {
     log.trace("Persisting task: " + name)
-    return (persistData(taskName(name), data))
+    persistData(taskName(name), data)
   }
 
   def removeTask(taskId: String): Boolean = {
@@ -150,10 +150,10 @@ class MesosStatePersistenceStore @Inject()(val zk: ZooKeeperClient,
 
     val newVar = state.store(existingVar.mutate(data))
 
-    val success = (newVar.get.value.deep == data.deep)
+    val success = newVar.get.value.deep == data.deep
 
     log.info("State update successful: " + success)
-    return success
+    success
   }
 
   private def remove(name: String): Boolean = {
@@ -167,7 +167,7 @@ class MesosStatePersistenceStore @Inject()(val zk: ZooKeeperClient,
         }
       }
       retry[String, Unit](2, 0, path, fnc)
-      (zk.get.exists(path, false) == null)
+      zk.get.exists(path, false) == null
     } catch {
       case t: Throwable => {
         log.warn("Error while deleting zookeeper node: %s".format(name), t)
