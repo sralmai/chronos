@@ -33,7 +33,7 @@
         <protobuf.version>2.4.1</protobuf.version>
         <twitter-commons.version>0.0.44</twitter-commons.version>
         <metrics.version>3.0.0</metrics.version>
-        <akka.version>2.2.1</akka.version>
+        <akka.version>2.3.0</akka.version>
         <logback.version>1.1.1</logback.version>
         <slf4j.version>1.7.6</slf4j.version>
         <akka-zmq.version>2.3.0</akka-zmq.version>
@@ -335,6 +335,12 @@
                             <exclude>com.google.javascript:closure-compiler</exclude>
                         </excludes>
                     </artifactSet>
+                    <transformers>
+                        <transformer
+                                implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+                            <resource>reference.conf</resource>
+                        </transformer>
+                    </transformers>
                     <filters>
                         <filter>
                             <artifact>*:*</artifact>
