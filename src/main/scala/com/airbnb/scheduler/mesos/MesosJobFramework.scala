@@ -12,7 +12,7 @@ import akka.zeromq.{ZMQMessage, Bind, SocketType, ZeroMQExtension}
 
 import scala.collection.mutable.HashSet
 import mesosphere.mesos.util.FrameworkIdUtil
-import akka.actor.ActorSystem
+import akka.actor.{ActorRef, ActorSystem}
 import akka.util.ByteString
 
 /**
@@ -25,18 +25,19 @@ class MesosJobFramework @Inject()(
   val taskManager: TaskManager,
   val config: SchedulerConfiguration,
   val frameworkIdUtil: FrameworkIdUtil,
-  val taskBuilder: MesosTaskBuilder)
+  val taskBuilder: MesosTaskBuilder,
+  val actorSystem: ActorSystem)
   extends Scheduler {
 
   private[this] val log = LoggerFactory.getLogger(getClass)
   private var runningJobs = new HashSet[String]
 
-  private val pubSocket = config.zmqPubAddress.get.map {
+  private val pubSocket: Option[ActorRef] = config.zmqPubAddress.get.map {
     bindAddress =>
       try {
         log.info("Attempting to start zmq pub on {}", bindAddress)
-        val system = ActorSystem()
-        val socket = ZeroMQExtension(system).newSocket(SocketType.Pub,
+        log.debug(actorSystem.settings.toString())
+        val socket = ZeroMQExtension(actorSystem).newSocket(SocketType.Pub,
           Bind(bindAddress))
         log.info("zmq publisher endpoint activated!")
         Some(socket)
@@ -257,6 +258,7 @@ class MesosJobFramework @Inject()(
   private def publishStatus(state: TaskState, jobName: String, taskId: String, msg: Option[String]) {
     pubSocket match {
       case Some(socket) =>
+          log.debug("Sending ZMQ message!")
           socket ! ZMQMessage(ByteString("chronos.task"),
           /* poor man's serialization */
             ByteString(List(jobName, JobUtils.taskStateToString(state), taskId).mkString("||")))

@@ -28,6 +28,8 @@ import org.slf4j.LoggerFactory
 class MainModule(val config: SchedulerConfiguration) extends AbstractModule {
   private[this] val log = LoggerFactory.getLogger(getClass)
 
+  private[this] val actorSystem = ActorSystem("chronos-actors")
+
   override def configure() {
     log.info("Wiring up the application")
 
@@ -78,15 +80,21 @@ class MainModule(val config: SchedulerConfiguration) extends AbstractModule {
 
   @Singleton
   @Provides
+  def providedActorSystem(): ActorSystem = {
+    /* really doesn't need to be a singleton... */
+    actorSystem
+  }
+
+  @Singleton
+  @Provides
   def provideMailClient(): Option[ActorRef] = {
     for {
       server <- config.mailServer.get if !server.isEmpty && server.contains(":")
       from <- config.mailFrom.get if !from.isEmpty
     } yield {
-      implicit val system = ActorSystem("chronos-actors")
       implicit val timeout = Timeout(36500 days)
       log.warn("Starting mail client.")
-      system.actorOf(Props(classOf[MailClient], server, from,
+      actorSystem.actorOf(Props(classOf[MailClient], server, from,
         config.mailUser.get, config.mailPassword.get, config.mailSslOn()))
     }
   }
