@@ -29,7 +29,7 @@ trait SchedulerConfiguration extends ScallopConf {
     descr = "The look-ahead time for scheduling tasks in seconds",
     default = Some(60))
 
-  def zookeeperServers() : String = {
+  def zookeeperServers(): String = {
     if (zookeeperServersString().startsWith("zk://")) {
       return zookeeperServersString().replace("zk://", "").replaceAll("/.*", "")
     }
@@ -121,6 +121,9 @@ trait SchedulerConfiguration extends ScallopConf {
   lazy val mesosRole = opt[String]("mesos_role",
     descr = "The Mesos role to run tasks under",
     default = Some("*"))
+
+  lazy val zmqPubAddress = opt[String]("zmq-pub-address", descr = "ZeroMQ address for publishing task status updates.",
+    default = None)
 
   // Chronos version
   lazy val version =

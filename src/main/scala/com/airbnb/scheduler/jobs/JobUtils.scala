@@ -11,6 +11,7 @@ import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics
 import org.joda.time.{Seconds, DateTime}
 import org.joda.time.format.DateTimeFormat
 import com.airbnb.utils.{JobDeserializer, JobSerializer}
+import org.apache.mesos.Protos.{TaskState, TaskStatus}
 
 /**
  * @author Florian Leibert (flo@leibert.de)
@@ -130,6 +131,20 @@ object JobUtils {
         .format(skip, nRec, start.toString(DateTimeFormat.fullDate),
         nStart.toString(DateTimeFormat.fullDate)))
       Some(new ScheduleStream(Iso8601Expressions.create(nRec, nStart, per), job.name))
+    }
+  }
+
+  def taskStateToString(taskState: TaskState) = {
+    /* this could be much nicer */
+    taskState match {
+      case TaskState.TASK_STAGING => "staging"
+      case TaskState.TASK_STARTING => "starting"
+      case TaskState.TASK_RUNNING => "running"
+      case TaskState.TASK_FINISHED => "finished"
+      case TaskState.TASK_FAILED => "failed"
+      case TaskState.TASK_KILLED => "killed"
+      case TaskState.TASK_LOST => "lost"
+      case _ => "unknown"
     }
   }
 }

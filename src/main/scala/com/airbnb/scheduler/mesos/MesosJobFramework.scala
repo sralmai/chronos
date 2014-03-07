@@ -8,25 +8,44 @@ import com.airbnb.scheduler.config.SchedulerConfiguration
 import com.google.inject.Inject
 import org.apache.mesos.{Protos, SchedulerDriver, Scheduler}
 import org.apache.mesos.Protos._
+import akka.zeromq.{ZMQMessage, Bind, SocketType, ZeroMQExtension}
 
 import scala.collection.mutable.HashSet
 import mesosphere.mesos.util.FrameworkIdUtil
+import akka.actor.ActorSystem
+import akka.util.ByteString
 
 /**
  * Provides the interface to mesos. Receives callbacks from mesos when resources are offered, declined etc.
  * @author Florian Leibert (flo@leibert.de)
  */
 class MesosJobFramework @Inject()(
-    val mesosDriver: MesosDriverFactory,
-    val scheduler: JobScheduler,
-    val taskManager: TaskManager,
-    val config: SchedulerConfiguration,
-    val frameworkIdUtil: FrameworkIdUtil,
-    val taskBuilder: MesosTaskBuilder)
+  val mesosDriver: MesosDriverFactory,
+  val scheduler: JobScheduler,
+  val taskManager: TaskManager,
+  val config: SchedulerConfiguration,
+  val frameworkIdUtil: FrameworkIdUtil,
+  val taskBuilder: MesosTaskBuilder)
   extends Scheduler {
 
   private[this] val log = LoggerFactory.getLogger(getClass)
   private var runningJobs = new HashSet[String]
+
+  private val pubSocket = config.zmqPubAddress.get.map {
+    bindAddress =>
+      try {
+        log.info("Attempting to start zmq pub on {}", bindAddress)
+        val system = ActorSystem()
+        val socket = ZeroMQExtension(system).newSocket(SocketType.Pub,
+          Bind(bindAddress))
+        log.info("zmq publisher endpoint activated!")
+        Some(socket)
+      } catch {
+        case exc: Exception =>
+          log.warn("Configured zmq publisher endpoint failed to init", exc)
+          None
+      }
+  }.flatten
 
   val frameworkName = "chronos"
 
@@ -59,13 +78,14 @@ class MesosJobFramework @Inject()(
       taskManager.getTask match {
         case Some((x, j)) => {
           (offers.toIterator.map {
-            offer => buildTask(x, j, offer) }.find(_._1)) match {
+            offer => buildTask(x, j, offer)
+          }.find(_._1)) match {
             case Some((isSufficient, taskBuilder, offer)) if isSufficient =>
               processTask(x, j, offer, taskBuilder)
               getNextTask(offers.filter(x => x.getId != offer.getId))
             case _ =>
               log.warn("No sufficient offers found for task '%s', will append to queue".format(x))
-              offers.foreach ( offer => mesosDriver.get().declineOffer(offer.getId) )
+              offers.foreach(offer => mesosDriver.get().declineOffer(offer.getId))
 
               /* Put the task back into the queue */
               taskManager.enqueue(x, j.priority)
@@ -73,7 +93,7 @@ class MesosJobFramework @Inject()(
         }
         case _ => {
           log.info("No tasks scheduled! Declining offers")
-          offers.foreach ( offer => mesosDriver.get().declineOffer(offer.getId) )
+          offers.foreach(offer => mesosDriver.get().declineOffer(offer.getId))
         }
       }
     }
@@ -88,7 +108,7 @@ class MesosJobFramework @Inject()(
 
   @Override
   def statusUpdate(schedulerDriver: SchedulerDriver, taskStatus: TaskStatus) {
-     taskManager.taskCache.put(taskStatus.getTaskId.getValue, taskStatus.getState)
+    taskManager.taskCache.put(taskStatus.getTaskId.getValue, taskStatus.getState)
 
     val (jobName, _, _) = TaskUtils.parseTaskId(taskStatus.getTaskId.getValue)
     taskStatus.getState match {
@@ -97,6 +117,9 @@ class MesosJobFramework @Inject()(
       case _ =>
         runningJobs.remove(jobName)
     }
+
+    publishStatus(taskStatus.getState, jobName, taskStatus.getTaskId.getValue,
+      if (taskStatus.hasMessage) Some(taskStatus.getMessage) else None)
 
     //TOOD(FL): Add statistics for jobs
     taskStatus.getState match {
@@ -151,7 +174,7 @@ class MesosJobFramework @Inject()(
    * @return and returns a tuple containing a boolean indicating if sufficient
    *         resources where offered, the TaskBuilder and the offer.
    */
-  def buildTask(taskId: String, job: BaseJob, offer: Offer) : (Boolean, TaskInfo.Builder, Offer) = {
+  def buildTask(taskId: String, job: BaseJob, offer: Offer): (Boolean, TaskInfo.Builder, Offer) = {
     val taskInfoTemplate = taskBuilder.getMesosTaskInfoBuilder(taskId, job)
     log.trace("Job %s ready for launch at time: %d".format(taskInfoTemplate.getTaskId.getValue,
       System.currentTimeMillis))
@@ -159,7 +182,8 @@ class MesosJobFramework @Inject()(
 
     var sufficient = scala.collection.mutable.Map[String, Boolean]().withDefaultValue(false)
     logOffer(offer)
-    offer.getResourcesList.foreach({x =>
+    offer.getResourcesList.foreach({
+      x =>
         log.info(x.getScalar.getValue.getClass.getName)
         x.getType match {
           case Value.Type.SCALAR =>
@@ -185,11 +209,12 @@ class MesosJobFramework @Inject()(
                 log.info("not found." + y.getClass.getName)
               }
 
-                // not sufficient, skip
+              // not sufficient, skip
             }
           case _ =>
             log.warn("Ignoring offered resource: %s".format(x.getType.toString))
-      }})
+        }
+    })
     (sufficient("cpus") && sufficient("mem") && sufficient("disk"), taskInfoTemplate, offer)
   }
 
@@ -218,15 +243,26 @@ class MesosJobFramework @Inject()(
     }
   }
 
-  private def logOffer(offer : Offer) {
+  private def logOffer(offer: Offer) {
     import collection.JavaConversions._
     val s = new StringBuilder
     offer.getResourcesList.foreach({
       x => s.append(f"Name: ${x.getName}")
-      if (x.hasScalar && x.getScalar.hasValue) {
-        s.append(f"Scalar: ${x.getScalar.getValue}")
-      }
+        if (x.hasScalar && x.getScalar.hasValue) {
+          s.append(f"Scalar: ${x.getScalar.getValue}")
+        }
     })
+  }
 
+  private def publishStatus(state: TaskState, jobName: String, taskId: String, msg: Option[String]) {
+    pubSocket match {
+      case Some(socket) =>
+          socket ! ZMQMessage(ByteString("chronos.task"),
+          /* poor man's serialization */
+            ByteString(List(jobName, JobUtils.taskStateToString(state), taskId).mkString("||")))
+      case None =>
+      /* TODO: could just create the publishStatus method on creation/class init instead of doing this matching */
+      /* do nothing */
+    }
   }
 }
