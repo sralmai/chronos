@@ -4,9 +4,7 @@ import annotation.tailrec
 import collection.mutable.ListBuffer
 import java.util.concurrent.{Future, Executors}
 import java.util.concurrent.atomic.{AtomicReference, AtomicBoolean}
-import java.util.logging.{Level, Logger}
 
-import com.airbnb.notification.MailClient
 import com.airbnb.scheduler.graph.JobGraph
 import com.airbnb.scheduler.state.PersistenceStore
 import com.airbnb.scheduler.mesos.MesosDriverFactory
@@ -64,7 +62,7 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
     try {
       new String(candidate.getLeaderData.get())
     } catch {
-      case e : Exception => {
+      case e: Exception => {
         log.error("Error trying to talk to zookeeper. Exiting.", e)
         System.exit(1)
         null
@@ -77,7 +75,7 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
       val subowners = job.owner.split("\\s*,\\s*")
       for (subowner <- subowners) {
         log.info("Sending mail notification to:%s for job %s".format(subowner, job.name))
-        mailClient.get ! (subowner, subject, message)
+        mailClient.get !(subowner, subject, message)
       }
     }
 
@@ -275,17 +273,18 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
       val job = jobOption.get
 
       val newJob = {
-        //TODO(FL): Refactor this section and handle the two job types separately.
-        if (job.isInstanceOf[ScheduleBasedJob]) {
-          job.asInstanceOf[ScheduleBasedJob].copy(successCount = job.successCount + 1,
-            errorsSinceLastSuccess = 0,
-            lastSuccess = DateTime.now(DateTimeZone.UTC).toString)
-        } else if (job.isInstanceOf[DependencyBasedJob]) {
-          job.asInstanceOf[DependencyBasedJob].copy(successCount = job.successCount + 1,
-            errorsSinceLastSuccess = 0,
-            lastSuccess = DateTime.now(DateTimeZone.UTC).toString)
-        } else
-          throw new IllegalArgumentException("Cannot handle unknown task type")
+        job match {
+          case oldJob: ScheduleBasedJob =>
+            oldJob.copy(successCount = job.successCount + 1,
+              errorsSinceLastSuccess = 0,
+              lastSuccess = DateTime.now(DateTimeZone.UTC).toString)
+          case oldJob: DependencyBasedJob =>
+            oldJob.copy(successCount = job.successCount + 1,
+              errorsSinceLastSuccess = 0,
+              lastSuccess = DateTime.now(DateTimeZone.UTC).toString)
+          case _ =>
+            throw new IllegalArgumentException("Cannot handle unknown task type")
+        }
       }
       replaceJob(job, newJob)
       val dependents = jobGraph.getExecutableChildren(jobOption.get.name)
@@ -313,28 +312,38 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
         of the job, the first returning Finished-task may trigger deletion of the job! This is a known limitation and
         needs some work but should only affect long running frequent finite jobs or short finite jobs with a tiny pause
         in between */
-      if (job.isInstanceOf[ScheduleBasedJob]) {
-        val scheduleBasedJob: ScheduleBasedJob = job.asInstanceOf[ScheduleBasedJob]
-        val (recurrences, _, _) = Iso8601Expressions.parse(scheduleBasedJob.schedule)
-        if (recurrences == 0) {
-          log.info("Disabling job that reached a zero-recurrence count!")
+      job match {
+        case scheuduleBasedJob: ScheduleBasedJob =>
+          val scheduleBasedJob: ScheduleBasedJob = job.asInstanceOf[ScheduleBasedJob]
+          val (recurrences, _, _) = Iso8601Expressions.parse(scheduleBasedJob.schedule)
+          if (recurrences == 0) {
+            log.info("Disabling job that reached a zero-recurrence count!")
 
-          val disabledJob: ScheduleBasedJob = scheduleBasedJob.copy(disabled = true)
-          sendNotification(
-            job,
-            "job '%s' disabled".format(job.name),
-            Some( """Job '%s' has exhausted all of its recurrences and has been disabled.
-                    |Please consider either removing your job, or updating its schedule and re-enabling it.
-                  """.stripMargin.format(job.name)))
-          replaceJob(scheduleBasedJob, disabledJob)
-        }
+            val disabledJob: ScheduleBasedJob = scheduleBasedJob.copy(disabled = true)
+            sendNotification(
+              job,
+              "job '%s' disabled".format(job.name),
+              Some( """Job '%s' has exhausted all of its recurrences and has been disabled.
+                      |Please consider either removing your job, or updating its schedule and re-enabling it.
+                    """.stripMargin.format(job.name)))
+            replaceJob(scheduleBasedJob, disabledJob)
+          }
+        case _ =>
+        // don't care
       }
     }
   }
 
-  def handleFailedTask(taskId: String) {
+  /**
+   * Update failure count, and return Some(job) if giving up.
+   *
+   * @param taskId id of failed task
+   * @return Some(job) on complete failure (giving up), None otherwise.
+   */
+  def handleFailedTask(taskId: String): Option[BaseJob] = {
     if (!TaskUtils.isValidVersion(taskId)) {
       log.warn("Found old or invalid task, ignoring!")
+      None
     } else {
       val (jobName, _, attempt) = TaskUtils.parseTaskId(taskId)
       log.warn("Task of job: %s failed.".format(jobName))
@@ -353,22 +362,23 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
               .plus(new Duration(failureRetryDelay)), attempt + 1)
             taskManager.persistTask(taskId, job)
             taskManager.enqueue(newTaskId, job.priority)
+            None
           } else {
             val disableJob =
               (disableAfterFailures > 0) && (job.errorsSinceLastSuccess + 1 >= disableAfterFailures)
 
             val newJob = {
-                job match {
-                  case job: ScheduleBasedJob =>
-                    job.copy(errorCount = job.errorCount + 1,
-                      errorsSinceLastSuccess = job.errorsSinceLastSuccess + 1,
-                      lastError = DateTime.now(DateTimeZone.UTC).toString, disabled = disableJob)
-                  case job: DependencyBasedJob =>
-                    job.copy(errorCount = job.errorCount + 1,
-                      errorsSinceLastSuccess = job.errorsSinceLastSuccess + 1,
-                      lastError = DateTime.now(DateTimeZone.UTC).toString, disabled = disableJob)
-                  case _ => throw new IllegalArgumentException("Cannot handle unknown task type")
-                }
+              job match {
+                case job: ScheduleBasedJob =>
+                  job.copy(errorCount = job.errorCount + 1,
+                    errorsSinceLastSuccess = job.errorsSinceLastSuccess + 1,
+                    lastError = DateTime.now(DateTimeZone.UTC).toString, disabled = disableJob)
+                case job: DependencyBasedJob =>
+                  job.copy(errorCount = job.errorCount + 1,
+                    errorsSinceLastSuccess = job.errorsSinceLastSuccess + 1,
+                    lastError = DateTime.now(DateTimeZone.UTC).toString, disabled = disableJob)
+                case _ => throw new IllegalArgumentException("Cannot handle unknown task type")
+              }
             }
             replaceJob(job, newJob)
 
@@ -385,11 +395,13 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
                 .format(job.name, DateTime.now(DateTimeZone.UTC), job.retries))
             }
             jobMetrics.updateJobStatus(jobName, success = false)
+            Some(newJob)
           }
         }
         case None =>
           log.warn("Could not find job for task: %s Job may have been deleted while task was in flight!"
             .format(taskId))
+          None
       }
     }
   }
@@ -403,7 +415,7 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
    */
   def iteration(dateTime: DateTime, schedules: List[ScheduleStream]): List[ScheduleStream] = {
     log.info("Checking schedules with time horizon:%s".format(scheduleHorizon.toString))
-    return removeOldSchedules(schedules.map(s => scheduleStream(dateTime, s)))
+    removeOldSchedules(schedules.map(s => scheduleStream(dateTime, s)))
   }
 
   def run(dateSupplier: () => DateTime) {

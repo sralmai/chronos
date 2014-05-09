@@ -134,10 +134,10 @@ class MesosJobFramework @Inject()(
         }
       case TaskState.TASK_FAILED =>
         log.warn("Task with id '%s' FAILED".format(taskStatus.getTaskId.getValue))
-        scheduler.handleFailedTask(taskStatus.getTaskId.getValue)
+        scheduler.handleFailedTask(taskStatus.getTaskId.getValue).map(publishJobFailure)
       case TaskState.TASK_LOST =>
         log.warn("Task with id '%s' LOST".format(taskStatus.getTaskId.getValue))
-        scheduler.handleFailedTask(taskStatus.getTaskId.getValue)
+        scheduler.handleFailedTask(taskStatus.getTaskId.getValue).map(publishJobFailure)
       case TaskState.TASK_RUNNING =>
         log.warn("Task with id '%s' RUNNING.".format(taskStatus.getTaskId.getValue))
       case _ =>
@@ -258,13 +258,25 @@ class MesosJobFramework @Inject()(
   private def publishStatus(state: TaskState, jobName: String, taskId: String, msg: Option[String]) {
     pubSocket match {
       case Some(socket) =>
-          log.debug("Sending ZMQ message!")
-          socket ! ZMQMessage(ByteString("chronos.task"),
+        log.debug("Sending ZMQ message!")
+        socket ! ZMQMessage(ByteString("chronos.task"),
           /* poor man's serialization */
-            ByteString(List(jobName, JobUtils.taskStateToString(state), taskId).mkString("||")))
+          ByteString(List(jobName, JobUtils.taskStateToString(state), taskId).mkString("||")))
       case None =>
       /* TODO: could just create the publishStatus method on creation/class init instead of doing this matching */
       /* do nothing */
     }
+  }
+
+  private def publishJobFailure(job: BaseJob) {
+    pubSocket match {
+      case Some(socket) =>
+        log.debug("Sending ZMQ failure message!")
+        socket ! ZMQMessage(ByteString("chronos.failure"),
+          /* poor man's serialization */
+          ByteString(List(job.name, job.errorsSinceLastSuccess, job.errorCount).mkString("||")))
+      case None =>
+        /* do nothing */
+      }
   }
 }
