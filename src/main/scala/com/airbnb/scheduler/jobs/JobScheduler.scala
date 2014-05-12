@@ -18,6 +18,7 @@ import org.joda.time.format.DateTimeFormat
 import com.google.common.util.concurrent.AbstractIdleService
 import akka.actor.ActorRef
 import org.slf4j.LoggerFactory
+import scala.collection.mutable
 
 /**
  * Constructs concrete tasks given a  list of schedules and a global scheduleHorizon.
@@ -251,6 +252,28 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
     }
   }
 
+  /* used for withJobLock */
+  private val lockSet = new mutable.HashMap[String, Object]
+
+  /*
+   * Want to prevent race conditions for fast updates... but
+   * don't want to leak locks all over the place.
+   */
+  private def withJobLock(name: String)(block: => Unit) {
+    /* acquire lock */
+    val lock = this.synchronized {
+      lockSet.getOrElseUpdate(name, new Object {})
+    }
+
+    lock.synchronized(block)
+
+    this.synchronized {
+      lock.synchronized{
+       lockSet - name
+      }
+    }
+  }
+
   /**
    * Takes care of follow-up actions for a finished task, i.e. update the job schedule in the persistence store or
    * launch tasks for dependent jobs
@@ -261,74 +284,78 @@ class JobScheduler @Inject()(val scheduleHorizon: Period,
       log.warn("Found old or invalid task, ignoring!")
       return
     }
+    /* race condition here for updates... if two identical tasks finish nearly at the same time... */
     val jobName = TaskUtils.getJobNameForTaskId(taskId)
-    val jobOption = jobGraph.lookupVertex(jobName)
 
-    if (jobOption.isEmpty) {
-      log.warn("Job '%s' no longer registered.".format(jobName))
-    } else {
-      val (_, start, _) = TaskUtils.parseTaskId(taskId)
-      jobMetrics.updateJobStat(jobName, timeMs = DateTime.now(DateTimeZone.UTC).getMillis - start)
-      jobMetrics.updateJobStatus(jobName, success = true)
-      val job = jobOption.get
+    withJobLock(jobName) {
+      val jobOption = jobGraph.lookupVertex(jobName)
 
-      val newJob = {
-        job match {
-          case oldJob: ScheduleBasedJob =>
-            oldJob.copy(successCount = job.successCount + 1,
-              errorsSinceLastSuccess = 0,
-              lastSuccess = DateTime.now(DateTimeZone.UTC).toString)
-          case oldJob: DependencyBasedJob =>
-            oldJob.copy(successCount = job.successCount + 1,
-              errorsSinceLastSuccess = 0,
-              lastSuccess = DateTime.now(DateTimeZone.UTC).toString)
-          case _ =>
-            throw new IllegalArgumentException("Cannot handle unknown task type")
-        }
-      }
-      replaceJob(job, newJob)
-      val dependents = jobGraph.getExecutableChildren(jobOption.get.name)
-      if (!dependents.isEmpty) {
-        log.trace("%s has dependents: %s .".format(jobName, dependents.mkString(",")))
-        dependents.map({
-          //TODO(FL): Ensure that the job for the given x exists. Lock.
-          x =>
-            val dependentJob = jobGraph.getJobForName(x).get
-            if (!dependentJob.disabled) {
-              taskManager.enqueue(TaskUtils.getTaskId(dependentJob,
-                DateTime.now(DateTimeZone.UTC)), dependentJob.priority)
-
-              log.trace("Enqueued depedent job." + x)
-            }
-        })
+      if (jobOption.isEmpty) {
+        log.warn("Job '%s' no longer registered.".format(jobName))
       } else {
-        log.trace("%s does not have any ready dependents.".format(jobName))
-      }
+        val (_, start, _) = TaskUtils.parseTaskId(taskId)
+        jobMetrics.updateJobStat(jobName, timeMs = DateTime.now(DateTimeZone.UTC).getMillis - start)
+        jobMetrics.updateJobStatus(jobName, success = true)
+        val job = jobOption.get
 
-      log.trace("Cleaning up finished task '%s'".format(taskId))
-
-      /* TODO(FL): Fix.
-         Cleanup potentially exhausted job. Note, if X tasks were fired within a short period of time (~ execution time
-        of the job, the first returning Finished-task may trigger deletion of the job! This is a known limitation and
-        needs some work but should only affect long running frequent finite jobs or short finite jobs with a tiny pause
-        in between */
-      job match {
-        case scheduleBasedJob: ScheduleBasedJob =>
-          val (recurrences, _, _) = Iso8601Expressions.parse(scheduleBasedJob.schedule)
-          if (recurrences == 0) {
-            log.info("Disabling job that reached a zero-recurrence count!")
-
-            val disabledJob: ScheduleBasedJob = scheduleBasedJob.copy(disabled = true)
-            sendNotification(
-              job,
-              "job '%s' disabled".format(job.name),
-              Some( """Job '%s' has exhausted all of its recurrences and has been disabled.
-                      |Please consider either removing your job, or updating its schedule and re-enabling it.
-                    """.stripMargin.format(job.name)))
-            replaceJob(scheduleBasedJob, disabledJob)
+        val newJob = {
+          job match {
+            case oldJob: ScheduleBasedJob =>
+              oldJob.copy(successCount = job.successCount + 1,
+                errorsSinceLastSuccess = 0,
+                lastSuccess = DateTime.now(DateTimeZone.UTC).toString)
+            case oldJob: DependencyBasedJob =>
+              oldJob.copy(successCount = job.successCount + 1,
+                errorsSinceLastSuccess = 0,
+                lastSuccess = DateTime.now(DateTimeZone.UTC).toString)
+            case _ =>
+              throw new IllegalArgumentException("Cannot handle unknown task type")
           }
-        case _ =>
-        // don't care
+        }
+        replaceJob(job, newJob)
+        val dependents = jobGraph.getExecutableChildren(jobOption.get.name)
+        if (!dependents.isEmpty) {
+          log.trace("%s has dependents: %s .".format(jobName, dependents.mkString(",")))
+          dependents.map({
+            //TODO(FL): Ensure that the job for the given x exists. Lock.
+            x =>
+              val dependentJob = jobGraph.getJobForName(x).get
+              if (!dependentJob.disabled) {
+                taskManager.enqueue(TaskUtils.getTaskId(dependentJob,
+                  DateTime.now(DateTimeZone.UTC)), dependentJob.priority)
+
+                log.trace("Enqueued dependent job." + x)
+              }
+          })
+        } else {
+          log.trace("%s does not have any ready dependents.".format(jobName))
+        }
+
+        log.trace("Cleaning up finished task '%s'".format(taskId))
+
+        /* TODO(FL): Fix.
+           Cleanup potentially exhausted job. Note, if X tasks were fired within a short period of time (~ execution time
+          of the job, the first returning Finished-task may trigger deletion of the job! This is a known limitation and
+          needs some work but should only affect long running frequent finite jobs or short finite jobs with a tiny pause
+          in between */
+        job match {
+          case scheduleBasedJob: ScheduleBasedJob =>
+            val (recurrences, _, _) = Iso8601Expressions.parse(scheduleBasedJob.schedule)
+            if (recurrences == 0) {
+              log.info("Disabling job that reached a zero-recurrence count!")
+
+              val disabledJob: ScheduleBasedJob = scheduleBasedJob.copy(disabled = true)
+              sendNotification(
+                job,
+                "job '%s' disabled".format(job.name),
+                Some( """Job '%s' has exhausted all of its recurrences and has been disabled.
+                        |Please consider either removing your job, or updating its schedule and re-enabling it.
+                      """.stripMargin.format(job.name)))
+              replaceJob(scheduleBasedJob, disabledJob)
+            }
+          case _ =>
+          // don't care
+        }
       }
     }
   }
