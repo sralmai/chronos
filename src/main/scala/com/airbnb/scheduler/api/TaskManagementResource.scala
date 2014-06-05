@@ -50,7 +50,7 @@ class TaskManagementResource @Inject()(
         log.info("Task failed '%s'".format(id))
         jobScheduler.handleFailedTask(id)
       }
-      return Response.noContent().build()
+      Response.noContent().build()
     } catch {
       case ex: Throwable => {
         log.warn("Exception while serving request", ex)
@@ -68,7 +68,7 @@ class TaskManagementResource @Inject()(
       val job = jobGraph.getJobForName(jobName).get
       taskManager.cancelTasks(job)
       taskManager.removeTasks(job)
-      return Response.noContent().build()
+      Response.noContent().build()
     } catch {
       case ex: Throwable => {
         log.warn("Exception while serving request", ex)
@@ -85,7 +85,7 @@ class TaskManagementResource @Inject()(
     try {
       persistenceStore.purgeTasks()
       taskManager.queues.foreach(_.clear())
-      return Response.noContent().build()
+      Response.noContent().build()
     } catch {
       case ex: Throwable => {
         log.warn("Exception while serving request", ex)
